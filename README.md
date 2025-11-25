@@ -17,11 +17,10 @@ as a group to reach x location.
 
 #### todo: look sexy
 
-#### todo: groups of friends vs groups of friends
-
 - [ ] auth: use google sign in
 - [ ] user profile stored in supabase
 - [ ] friend groups stored in supabase
 - [ ] steps - gotten from health connect / apple health
 - [ ] integrate map into project (google maps)
 - [ ] calculating distance as the crow flies (keep it easy for now)
+- [ ] groups of friends vs groups of friends
