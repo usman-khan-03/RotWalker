@@ -45,7 +45,7 @@ export function CrewCard({ crew, memberCount, journeyProgress, journeyName, onPr
               ]}
             />
           </View>
-          <Text style={styles.progressText}>{journeyProgress}%</Text>
+          <Text style={styles.progressText}>{String(journeyProgress)}%</Text>
         </View>
       )}
     </TouchableOpacity>

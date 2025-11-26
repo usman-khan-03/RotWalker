@@ -135,7 +135,7 @@ export function HomeScreen() {
         <View style={styles.seasonInfo}>
           <Text style={styles.seasonTitle}>Global Leaderboard</Text>
           <Text style={styles.seasonRoute}>
-            {season.season.origin_city} → {season.season.dest_city}
+            {`${season.season.origin_city} → ${season.season.dest_city}`}
           </Text>
         </View>
       </View>
@@ -157,7 +157,7 @@ export function HomeScreen() {
           <Text style={styles.greetingText}>Hey, {firstName}</Text>
           {homeSummary?.streak && homeSummary.streak > 0 && (
             <View style={styles.streakBadge}>
-              <Text style={styles.streakText}>🔥 {homeSummary.streak}</Text>
+              <Text style={styles.streakText}>🔥 {String(homeSummary.streak)}</Text>
             </View>
           )}
         </View>
@@ -176,15 +176,15 @@ export function HomeScreen() {
         <View style={styles.statsRow}>
           <StatCard
             label="Today"
-            value={homeSummary?.today_steps.toLocaleString() || '0'}
+            value={homeSummary?.today_steps ? homeSummary.today_steps.toLocaleString() : '0'}
           />
           <StatCard
             label="This Week"
-            value={homeSummary?.week_steps.toLocaleString() || '0'}
+            value={homeSummary?.week_steps ? homeSummary.week_steps.toLocaleString() : '0'}
           />
           <StatCard
             label="Streak"
-            value={homeSummary?.streak || 0}
+            value={String(homeSummary?.streak || 0)}
           />
         </View>
 

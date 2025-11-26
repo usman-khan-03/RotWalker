@@ -47,7 +47,7 @@ export function JourneyCard({ journey, mode, isPrimary, onPress }: JourneyCardPr
             ]}
           />
         </View>
-        <Text style={styles.progressText}>{progressPercent}%</Text>
+        <Text style={styles.progressText}>{String(progressPercent)}%</Text>
       </View>
 
       <View style={styles.stats}>

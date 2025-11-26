@@ -53,7 +53,7 @@ export function LeaderboardList({ entries, currentUserId, onEntryPress }: Leader
         </View>
 
         <View style={styles.stats}>
-          <Text style={styles.steps}>{item.steps.toLocaleString()}</Text>
+          <Text style={styles.steps}>{String(item.steps.toLocaleString())}</Text>
           <Text style={styles.label}>steps</Text>
         </View>
       </View>

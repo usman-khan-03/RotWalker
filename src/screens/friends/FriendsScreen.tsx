@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFriendsLeaderboard } from '../../hooks/useFriendsLeaderboard';
 import { SegmentedControl } from '../../components/SegmentedControl';
@@ -20,64 +20,73 @@ export function FriendsScreen() {
   const totalFriends = leaderboard?.length || 0;
   const displayRank = rank >= 0 ? rank + 1 : totalFriends + 1;
 
+  const renderHeader = () => (
+    <>
+      {/* Rank Summary */}
+      <View style={styles.rankSummary}>
+        <Text style={styles.rankText}>
+          You are #{String(displayRank)} out of {String(totalFriends)} friends this {period === 'today' ? 'today' : period === 'week' ? 'week' : 'month'}
+        </Text>
+      </View>
+
+      {/* Period Filter */}
+      <View style={styles.filterContainer}>
+        <SegmentedControl
+          options={['Today', 'This Week', 'This Month']}
+          selectedIndex={period === 'today' ? 0 : period === 'week' ? 1 : 2}
+          onSelect={(index) => {
+            const periods: LeaderboardPeriod[] = ['today', 'week', 'month'];
+            setPeriod(periods[index]);
+          }}
+        />
+      </View>
+    </>
+  );
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      );
+    }
+
+    if (!leaderboard || leaderboard.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>No friends yet</Text>
+          <Text style={styles.emptyStateSubtext}>
+            Add friends to compare your progress
+          </Text>
+          <TouchableOpacity style={styles.addButton}>
+            <Text style={styles.addButtonText}>Add Friends</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return <LeaderboardList entries={leaderboard} currentUserId={user?.id} />;
+  };
+
+  const renderFooter = () => (
+    <View style={styles.friendManagement}>
+      <TouchableOpacity style={styles.manageButton}>
+        <Text style={styles.manageButtonText}>Add Friends</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.manageButton}>
+        <Text style={styles.manageButtonText}>Friend Requests</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Friends</Text>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Rank Summary */}
-        <View style={styles.rankSummary}>
-          <Text style={styles.rankText}>
-            You are #{displayRank} out of {totalFriends} friends this {period}
-          </Text>
-        </View>
-
-        {/* Period Filter */}
-        <View style={styles.filterContainer}>
-          <SegmentedControl
-            options={['Today', 'This Week', 'This Month']}
-            selectedIndex={period === 'today' ? 0 : period === 'week' ? 1 : 2}
-            onSelect={(index) => {
-              const periods: LeaderboardPeriod[] = ['today', 'week', 'month'];
-              setPeriod(periods[index]);
-            }}
-          />
-        </View>
-
-        {/* Leaderboard */}
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading...</Text>
-          </View>
-        ) : leaderboard && leaderboard.length > 0 ? (
-          <LeaderboardList
-            entries={leaderboard}
-            currentUserId={user?.id}
-          />
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No friends yet</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Add friends to compare your progress
-            </Text>
-            <TouchableOpacity style={styles.addButton}>
-              <Text style={styles.addButtonText}>Add Friends</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Friend Management */}
-        <View style={styles.friendManagement}>
-          <TouchableOpacity style={styles.manageButton}>
-            <Text style={styles.manageButtonText}>Add Friends</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.manageButton}>
-            <Text style={styles.manageButtonText}>Friend Requests</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+      {renderContent()}
     </View>
   );
 }
@@ -96,18 +105,12 @@ const styles = StyleSheet.create({
   title: {
     ...theme.typography.h1,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.xxl,
-  },
   rankSummary: {
     backgroundColor: theme.colors.cardBackground,
     borderRadius: theme.borderRadius.xl,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
+    marginHorizontal: theme.spacing.md,
     alignItems: 'center',
     ...theme.shadows.card,
   },
@@ -117,6 +120,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     marginBottom: theme.spacing.md,
+    marginHorizontal: theme.spacing.md,
   },
   loadingContainer: {
     paddingVertical: theme.spacing.xxl,
@@ -154,6 +158,8 @@ const styles = StyleSheet.create({
   },
   friendManagement: {
     marginTop: theme.spacing.xl,
+    marginHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.xxl,
     gap: theme.spacing.sm,
   },
   manageButton: {

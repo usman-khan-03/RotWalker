@@ -36,7 +36,7 @@ export function SeasonMatchupCard({ myCrew, opponentCrew, targetDistance }: Seas
               ]}
             />
           </View>
-          <Text style={styles.distance}>{myCrew.total_distance_km.toFixed(1)} km</Text>
+          <Text style={styles.distance}>{String(myCrew.total_distance_km.toFixed(1))} km</Text>
         </View>
 
         {/* Opponent Crew */}
@@ -55,7 +55,7 @@ export function SeasonMatchupCard({ myCrew, opponentCrew, targetDistance }: Seas
                 ]}
               />
             </View>
-            <Text style={styles.distance}>{opponentCrew.total_distance_km.toFixed(1)} km</Text>
+            <Text style={styles.distance}>{String(opponentCrew.total_distance_km.toFixed(1))} km</Text>
           </View>
         )}
       </View>

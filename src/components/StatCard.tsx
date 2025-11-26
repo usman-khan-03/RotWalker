@@ -15,8 +15,12 @@ interface StatCardProps {
 export function StatCard({ label, value, icon }: StatCardProps) {
   return (
     <View style={styles.container}>
-      {icon && <View style={styles.iconContainer}>{icon}</View>}
-      <Text style={styles.value}>{value}</Text>
+      {icon && (
+        <View style={styles.iconContainer}>
+          {typeof icon === 'string' ? <Text>{icon}</Text> : icon}
+        </View>
+      )}
+      <Text style={styles.value}>{String(value)}</Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
