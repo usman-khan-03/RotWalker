@@ -10,8 +10,8 @@ import React, {
 	ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { supabase } from "../api/supabase";
 import { getProfile, createProfile } from "../api/database";
 import type { Profile } from "../types";
@@ -104,20 +104,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		const handleDeepLink = async (url: string) => {
 			// Extract the URL fragments/query params
 			const { path, queryParams } = Linking.parse(url);
-			
-			if (path === 'auth/callback' || queryParams?.access_token) {
+
+			if (path === "auth/callback" || queryParams?.access_token) {
 				// Handle the OAuth callback
 				const accessToken = queryParams?.access_token as string;
 				const refreshToken = queryParams?.refresh_token as string;
-				
+
 				if (accessToken && refreshToken) {
 					const { data, error } = await supabase.auth.setSession({
 						access_token: accessToken,
 						refresh_token: refreshToken,
 					});
-					
+
 					if (error) {
-						console.error('Error setting session from deep link:', error);
+						console.error("Error setting session from deep link:", error);
 					}
 				}
 			}
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		});
 
 		// Listen for deep links while app is running
-		const subscriptionLinking = Linking.addEventListener('url', (event) => {
+		const subscriptionLinking = Linking.addEventListener("url", (event) => {
 			handleDeepLink(event.url);
 		});
 
@@ -144,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const signInWithGoogle = async () => {
 		try {
 			// Get the redirect URL - use the app scheme
-			const redirectUrl = Linking.createURL('auth/callback');
-			
+			const redirectUrl = Linking.createURL("rotwalker://auth/callback");
+
 			const { data, error } = await supabase.auth.signInWithOAuth({
 				provider: "google",
 				options: {
@@ -163,11 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			if (data?.url) {
 				const result = await WebBrowser.openAuthSessionAsync(
 					data.url,
-					redirectUrl
+					redirectUrl,
 				);
 
-				if (result.type === 'cancel') {
-					throw new Error('Google sign-in was cancelled');
+				if (result.type === "cancel") {
+					throw new Error("Google sign-in was cancelled");
 				}
 
 				// The session will be set via the deep link handler
