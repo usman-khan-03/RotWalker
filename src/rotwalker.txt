@@ -1,0 +1,861 @@
+// ============================================================================
+// EDGE FUNCTION: sync_steps_data
+// ============================================================================
+// Function name: sync_steps_data
+// Description: Syncs step data from device sensors or health apps
+// Input: { user_id: string, source: 'pedometer' | 'apple_health' | 'health_connect', samples: Array<{ date: string, steps: number, distance_m?: number }> }
+// ============================================================================
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { user_id, source, samples } = await req.json()
+
+    if (!user_id || !source || !samples || !Array.isArray(samples)) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: user_id, source, samples' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Fixed average stride length in meters (used for distance calculation)
+    const AVERAGE_STRIDE_LENGTH_M = 0.762 // ~2.5 feet
+
+    // Process each sample
+    for (const sample of samples) {
+      const { date, steps, distance_m } = sample
+
+      // Calculate distance if not provided (using fixed stride length)
+      const distance_km = distance_m ? distance_m / 1000 : (steps * AVERAGE_STRIDE_LENGTH_M) / 1000
+
+      // Upsert into daily_steps
+      const { error: dailyStepsError } = await supabaseClient
+        .from('daily_steps')
+        .upsert(
+          {
+            user_id,
+            date,
+            steps,
+            distance_km,
+            source,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,date',
+          }
+        )
+
+      if (dailyStepsError) {
+        console.error('Error upserting daily_steps:', dailyStepsError)
+        throw dailyStepsError
+      }
+
+      // Get all active journeys for this user (solo and crew)
+      const { data: soloJourneys } = await supabaseClient
+        .from('journeys')
+        .select('id, type, crew_id')
+        .eq('user_id', user_id)
+        .eq('status', 'active')
+        .eq('type', 'solo')
+
+      // Get crew journeys via crew_members
+      const { data: crewMemberships } = await supabaseClient
+        .from('crew_members')
+        .select('crew_id')
+        .eq('user_id', user_id)
+        .eq('status', 'active')
+
+      const crewIds = crewMemberships?.map((cm) => cm.crew_id) || []
+
+      let crewJourneys = []
+      if (crewIds.length > 0) {
+        const { data } = await supabaseClient
+          .from('journeys')
+          .select('id, type, crew_id')
+          .eq('status', 'active')
+          .eq('type', 'crew')
+          .in('crew_id', crewIds)
+
+        crewJourneys = data || []
+      }
+
+      const allJourneys = [...(soloJourneys || []), ...crewJourneys]
+
+      // Update journey_progress for each journey
+      for (const journey of allJourneys) {
+        // Upsert journey progress
+        const { error: progressError } = await supabaseClient
+          .from('journey_progress')
+          .upsert(
+            {
+              journey_id: journey.id,
+              user_id,
+              date,
+              steps,
+              distance_km,
+              updated_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'journey_id,user_id,date',
+            }
+          )
+
+        if (progressError) {
+          console.error('Error upserting journey_progress:', progressError)
+        }
+      }
+
+      // Update season_crews if user is in active season
+      const { data: activeSeason } = await supabaseClient
+        .from('seasons')
+        .select('id')
+        .eq('is_current', true)
+        .eq('status', 'active')
+        .single()
+
+      if (activeSeason && crewIds.length > 0) {
+        // Get season_crews for user's crews
+        const { data: seasonCrews } = await supabaseClient
+          .from('season_crews')
+          .select('id, crew_id, total_distance_km')
+          .eq('season_id', activeSeason.id)
+          .in('crew_id', crewIds)
+
+        if (seasonCrews) {
+          for (const seasonCrew of seasonCrews) {
+            // Recalculate total distance for this crew in this season
+            const { data: allProgress } = await supabaseClient
+              .from('journey_progress')
+              .select('distance_km')
+              .eq('date', date)
+              .in(
+                'journey_id',
+                (
+                  await supabaseClient
+                    .from('journeys')
+                    .select('id')
+                    .eq('crew_id', seasonCrew.crew_id)
+                    .eq('status', 'active')
+                ).data?.map((j) => j.id) || []
+              )
+
+            // Get all crew members
+            const { data: crewMembers } = await supabaseClient
+              .from('crew_members')
+              .select('user_id')
+              .eq('crew_id', seasonCrew.crew_id)
+              .eq('status', 'active')
+
+            const memberIds = crewMembers?.map((cm) => cm.user_id) || []
+
+            // Sum distance from all members for this date
+            const { data: seasonProgress } = await supabaseClient
+              .from('journey_progress')
+              .select('distance_km')
+              .eq('date', date)
+              .in('user_id', memberIds)
+              .in(
+                'journey_id',
+                (
+                  await supabaseClient
+                    .from('journeys')
+                    .select('id')
+                    .eq('crew_id', seasonCrew.crew_id)
+                    .eq('status', 'active')
+                ).data?.map((j) => j.id) || []
+              )
+
+            // Get total distance for this season (sum all dates)
+            const { data: allSeasonProgress } = await supabaseClient
+              .from('journey_progress')
+              .select('distance_km')
+              .in('user_id', memberIds)
+              .in(
+                'journey_id',
+                (
+                  await supabaseClient
+                    .from('journeys')
+                    .select('id')
+                    .eq('crew_id', seasonCrew.crew_id)
+                    .eq('status', 'active')
+                ).data?.map((j) => j.id) || []
+              )
+
+            const totalDistance =
+              allSeasonProgress?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+
+            // Update season_crews total_distance_km
+            await supabaseClient
+              .from('season_crews')
+              .update({ total_distance_km: totalDistance, updated_at: new Date().toISOString() })
+              .eq('id', seasonCrew.id)
+          }
+        }
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, message: 'Steps synced successfully' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
+// ============================================================================
+// EDGE FUNCTION: get_home_summary
+// ============================================================================
+// Function name: get_home_summary
+// Description: Returns home dashboard summary data
+// Input: { user_id: string }
+// ============================================================================
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { user_id } = await req.json()
+
+    if (!user_id) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: user_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    const today = new Date().toISOString().split('T')[0]
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    // Get today's steps
+    const { data: todayStepsData } = await supabaseClient
+      .from('daily_steps')
+      .select('steps')
+      .eq('user_id', user_id)
+      .eq('date', today)
+      .single()
+
+    const today_steps = todayStepsData?.steps || 0
+
+    // Get this week's steps
+    const { data: weekStepsData } = await supabaseClient
+      .from('daily_steps')
+      .select('steps')
+      .eq('user_id', user_id)
+      .gte('date', weekAgo)
+      .lte('date', today)
+
+    const week_steps = weekStepsData?.reduce((sum, d) => sum + (d.steps || 0), 0) || 0
+
+    // Calculate streak (consecutive days with steps)
+    let streak = 0
+    let checkDate = new Date()
+    while (true) {
+      const dateStr = checkDate.toISOString().split('T')[0]
+      const { data } = await supabaseClient
+        .from('daily_steps')
+        .select('steps')
+        .eq('user_id', user_id)
+        .eq('date', dateStr)
+        .single()
+
+      if (data && data.steps > 0) {
+        streak++
+        checkDate.setDate(checkDate.getDate() - 1)
+      } else {
+        break
+      }
+    }
+
+    // Get primary solo journey
+    const { data: primarySoloJourney } = await supabaseClient
+      .from('journeys')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('type', 'solo')
+      .eq('is_primary', true)
+      .eq('status', 'active')
+      .single()
+
+    let primarySoloJourneyWithProgress = null
+    if (primarySoloJourney) {
+      // Get total progress for this journey
+      const { data: progressData } = await supabaseClient
+        .from('journey_progress')
+        .select('distance_km, steps')
+        .eq('journey_id', primarySoloJourney.id)
+        .eq('user_id', user_id)
+
+      const distance_travelled_km =
+        progressData?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+      const steps_contributed = progressData?.reduce((sum, p) => sum + (p.steps || 0), 0) || 0
+      const progress_ratio = primarySoloJourney.target_distance_km > 0
+        ? Math.min(distance_travelled_km / primarySoloJourney.target_distance_km, 1)
+        : 0
+
+      primarySoloJourneyWithProgress = {
+        ...primarySoloJourney,
+        distance_travelled_km,
+        progress_ratio,
+        steps_contributed,
+      }
+    }
+
+    // Get primary crew journey
+    const { data: userCrews } = await supabaseClient
+      .from('crew_members')
+      .select('crew_id')
+      .eq('user_id', user_id)
+      .eq('status', 'active')
+
+    const crewIds = userCrews?.map((uc) => uc.crew_id) || []
+    let primaryCrewJourneyWithProgress = null
+
+    if (crewIds.length > 0) {
+      const { data: primaryCrewJourney } = await supabaseClient
+        .from('journeys')
+        .select('*')
+        .eq('type', 'crew')
+        .eq('is_primary', true)
+        .eq('status', 'active')
+        .in('crew_id', crewIds)
+        .single()
+
+      if (primaryCrewJourney) {
+        // Get total progress for this crew journey (sum all members)
+        const { data: crewMembers } = await supabaseClient
+          .from('crew_members')
+          .select('user_id')
+          .eq('crew_id', primaryCrewJourney.crew_id)
+          .eq('status', 'active')
+
+        const memberIds = crewMembers?.map((cm) => cm.user_id) || []
+
+        const { data: progressData } = await supabaseClient
+          .from('journey_progress')
+          .select('distance_km, steps')
+          .eq('journey_id', primaryCrewJourney.id)
+          .in('user_id', memberIds)
+
+        const distance_travelled_km =
+          progressData?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+        const steps_contributed = progressData?.reduce((sum, p) => sum + (p.steps || 0), 0) || 0
+        const progress_ratio = primaryCrewJourney.target_distance_km > 0
+          ? Math.min(distance_travelled_km / primaryCrewJourney.target_distance_km, 1)
+          : 0
+
+        primaryCrewJourneyWithProgress = {
+          ...primaryCrewJourney,
+          distance_travelled_km,
+          progress_ratio,
+          steps_contributed,
+        }
+      }
+    }
+
+    // Get current season
+    const { data: currentSeason } = await supabaseClient
+      .from('seasons')
+      .select('*')
+      .eq('is_current', true)
+      .single()
+
+    let currentSeasonInfo = null
+    if (currentSeason) {
+      // Get user's crew participation
+      const { data: userSeasonCrew } = await supabaseClient
+        .from('season_crews')
+        .select('*, crew:crews(*)')
+        .eq('season_id', currentSeason.id)
+        .in('crew_id', crewIds)
+        .single()
+
+      let opponentCrew = null
+      if (userSeasonCrew?.opponent_crew_id) {
+        const { data: opponentSeasonCrew } = await supabaseClient
+          .from('season_crews')
+          .select('*, crew:crews(*)')
+          .eq('id', userSeasonCrew.opponent_crew_id)
+          .single()
+
+        opponentCrew = opponentSeasonCrew
+      }
+
+      // Get global leaderboard (top 10 + user's crew)
+      const { data: allSeasonCrews } = await supabaseClient
+        .from('season_crews')
+        .select('*, crew:crews(*)')
+        .eq('season_id', currentSeason.id)
+        .order('total_distance_km', { ascending: false })
+
+      const top10 = allSeasonCrews?.slice(0, 10) || []
+      const userCrewInLeaderboard = allSeasonCrews?.find((sc) => crewIds.includes(sc.crew_id))
+      const globalLeaderboard = [...top10]
+      if (userCrewInLeaderboard && !top10.find((sc) => sc.id === userCrewInLeaderboard.id)) {
+        globalLeaderboard.push(userCrewInLeaderboard)
+      }
+
+      // Calculate ranks
+      const rankedLeaderboard = globalLeaderboard.map((sc, index) => ({
+        ...sc,
+        rank: allSeasonCrews?.findIndex((s) => s.id === sc.id) + 1,
+      }))
+
+      currentSeasonInfo = {
+        season: currentSeason,
+        user_crew: userSeasonCrew || null,
+        opponent_crew: opponentCrew || null,
+        global_leaderboard: rankedLeaderboard,
+      }
+    }
+
+    // Get previous season (ended, not current)
+    const { data: previousSeason } = await supabaseClient
+      .from('seasons')
+      .select('*')
+      .eq('status', 'ended')
+      .order('week_end', { ascending: false })
+      .limit(1)
+      .single()
+
+    let previousSeasonInfo = null
+    if (previousSeason) {
+      const { data: userSeasonCrew } = await supabaseClient
+        .from('season_crews')
+        .select('*, crew:crews(*)')
+        .eq('season_id', previousSeason.id)
+        .in('crew_id', crewIds)
+        .single()
+
+      const { data: allSeasonCrews } = await supabaseClient
+        .from('season_crews')
+        .select('*, crew:crews(*)')
+        .eq('season_id', previousSeason.id)
+        .order('total_distance_km', { ascending: false })
+
+      const top10 = allSeasonCrews?.slice(0, 10) || []
+      const userCrewInLeaderboard = allSeasonCrews?.find((sc) => crewIds.includes(sc.crew_id))
+      const globalLeaderboard = [...top10]
+      if (userCrewInLeaderboard && !top10.find((sc) => sc.id === userCrewInLeaderboard.id)) {
+        globalLeaderboard.push(userCrewInLeaderboard)
+      }
+
+      previousSeasonInfo = {
+        season: previousSeason,
+        user_crew: userSeasonCrew || null,
+        opponent_crew: null,
+        global_leaderboard: globalLeaderboard.map((sc, index) => ({
+          ...sc,
+          rank: allSeasonCrews?.findIndex((s) => s.id === sc.id) + 1,
+        })),
+      }
+    }
+
+    // Get next season (upcoming)
+    const { data: nextSeason } = await supabaseClient
+      .from('seasons')
+      .select('*')
+      .eq('status', 'upcoming')
+      .order('week_start', { ascending: true })
+      .limit(1)
+      .single()
+
+    let nextSeasonInfo = null
+    if (nextSeason) {
+      nextSeasonInfo = {
+        season: nextSeason,
+        user_crew: null,
+        opponent_crew: null,
+        global_leaderboard: [],
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        today_steps,
+        week_steps,
+        streak,
+        primary_solo_journey: primarySoloJourneyWithProgress,
+        primary_crew_journey: primaryCrewJourneyWithProgress,
+        current_season: currentSeasonInfo,
+        previous_season: previousSeasonInfo,
+        next_season: nextSeasonInfo,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
+// ============================================================================
+// EDGE FUNCTION: get_friends_leaderboard
+// ============================================================================
+// Function name: get_friends_leaderboard
+// Description: Returns friends leaderboard for a given period
+// Input: { user_id: string, period: 'today' | 'week' | 'month' }
+// ============================================================================
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { user_id, period } = await req.json()
+
+    if (!user_id || !period) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: user_id, period' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Calculate date range based on period
+    const today = new Date()
+    let startDate: Date
+    if (period === 'today') {
+      startDate = new Date(today)
+    } else if (period === 'week') {
+      startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    } else {
+      // month
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1)
+    }
+
+    const startDateStr = startDate.toISOString().split('T')[0]
+    const endDateStr = today.toISOString().split('T')[0]
+
+    // Get accepted friendships
+    const { data: friendships } = await supabaseClient
+      .from('friendships')
+      .select('friend_id, user_id')
+      .or(`user_id.eq.${user_id},friend_id.eq.${user_id}`)
+      .eq('status', 'accepted')
+
+    const friendIds = new Set<string>()
+    friendships?.forEach((f) => {
+      if (f.user_id === user_id) {
+        friendIds.add(f.friend_id)
+      } else {
+        friendIds.add(f.user_id)
+      }
+    })
+
+    // Include current user in leaderboard
+    friendIds.add(user_id)
+
+    // Get steps for all friends in the period
+    const { data: stepsData } = await supabaseClient
+      .from('daily_steps')
+      .select('user_id, steps, distance_km, date')
+      .in('user_id', Array.from(friendIds))
+      .gte('date', startDateStr)
+      .lte('date', endDateStr)
+
+    // Aggregate steps by user
+    const userStepsMap = new Map<string, { steps: number; distance_km: number }>()
+    stepsData?.forEach((d) => {
+      const current = userStepsMap.get(d.user_id) || { steps: 0, distance_km: 0 }
+      userStepsMap.set(d.user_id, {
+        steps: current.steps + (d.steps || 0),
+        distance_km: current.distance_km + (d.distance_km || 0),
+      })
+    })
+
+    // Get profiles for all friends
+    const { data: profiles } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .in('id', Array.from(friendIds))
+
+    // Get primary journeys for all friends
+    const { data: primaryJourneys } = await supabaseClient
+      .from('journeys')
+      .select('id, user_id, name, target_distance_km')
+      .in('user_id', Array.from(friendIds))
+      .eq('type', 'solo')
+      .eq('is_primary', true)
+      .eq('status', 'active')
+
+    // Get journey progress for primary journeys
+    const journeyProgressMap = new Map<string, { distance: number; progress: number }>()
+    for (const journey of primaryJourneys || []) {
+      const { data: progressData } = await supabaseClient
+        .from('journey_progress')
+        .select('distance_km')
+        .eq('journey_id', journey.id)
+        .eq('user_id', journey.user_id)
+
+      const totalDistance = progressData?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+      const progress = journey.target_distance_km > 0 ? (totalDistance / journey.target_distance_km) * 100 : 0
+
+      journeyProgressMap.set(journey.user_id, {
+        distance: totalDistance,
+        progress: Math.min(progress, 100),
+      })
+    }
+
+    // Build leaderboard entries
+    const leaderboard: Array<{
+      friend: any
+      steps: number
+      distance_km: number
+      primary_journey_progress: number | null
+      primary_journey_name: string | null
+    }> = []
+
+    for (const profile of profiles || []) {
+      const stats = userStepsMap.get(profile.id) || { steps: 0, distance_km: 0 }
+      const journeyInfo = journeyProgressMap.get(profile.id)
+      const primaryJourney = primaryJourneys?.find((j) => j.user_id === profile.id)
+
+      leaderboard.push({
+        friend: profile,
+        steps: stats.steps,
+        distance_km: stats.distance_km,
+        primary_journey_progress: journeyInfo ? Math.round(journeyInfo.progress) : null,
+        primary_journey_name: primaryJourney ? primaryJourney.name : null,
+      })
+    }
+
+    // Sort by steps descending
+    leaderboard.sort((a, b) => b.steps - a.steps)
+
+    return new Response(
+      JSON.stringify(leaderboard),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
+// ============================================================================
+// EDGE FUNCTION: get_crew_detail
+// ============================================================================
+// Function name: get_crew_detail
+// Description: Returns detailed crew information including members and journey
+// Input: { crew_id: string }
+// ============================================================================
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { crew_id } = await req.json()
+
+    if (!crew_id) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: crew_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Get crew
+    const { data: crew, error: crewError } = await supabaseClient
+      .from('crews')
+      .select('*')
+      .eq('id', crew_id)
+      .single()
+
+    if (crewError || !crew) {
+      return new Response(
+        JSON.stringify({ error: 'Crew not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get crew members with profiles
+    const { data: crewMembers } = await supabaseClient
+      .from('crew_members')
+      .select('*')
+      .eq('crew_id', crew_id)
+      .eq('status', 'active')
+
+    const memberIds = crewMembers?.map((cm) => cm.user_id) || []
+
+    // Get profiles for members
+    const { data: profiles } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .in('id', memberIds)
+
+    const profileMap = new Map(profiles?.map((p) => [p.id, p]) || [])
+
+    // Get current crew journey
+    const { data: currentJourney } = await supabaseClient
+      .from('journeys')
+      .select('*')
+      .eq('crew_id', crew_id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    let currentJourneyWithProgress = null
+    if (currentJourney) {
+      // Get progress for all members
+      const { data: progressData } = await supabaseClient
+        .from('journey_progress')
+        .select('user_id, distance_km, steps')
+        .eq('journey_id', currentJourney.id)
+        .in('user_id', memberIds)
+
+      const distance_travelled_km =
+        progressData?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+      const progress_ratio = currentJourney.target_distance_km > 0
+        ? Math.min(distance_travelled_km / currentJourney.target_distance_km, 1)
+        : 0
+
+      currentJourneyWithProgress = {
+        ...currentJourney,
+        distance_travelled_km,
+        progress_ratio,
+        steps_contributed: progressData?.reduce((sum, p) => sum + (p.steps || 0), 0) || 0,
+      }
+    }
+
+    // Calculate member contributions
+    const membersWithContributions = (crewMembers || []).map((member) => {
+      const profile = profileMap.get(member.user_id)
+      if (!profile) {
+        return {
+          ...member,
+          profile: null,
+          contribution_steps: 0,
+          contribution_distance_km: 0,
+        }
+      }
+
+      // Get this member's contribution to current journey
+      let contribution_steps = 0
+      let contribution_distance_km = 0
+
+      if (currentJourney) {
+        const { data: memberProgress } = await supabaseClient
+          .from('journey_progress')
+          .select('steps, distance_km')
+          .eq('journey_id', currentJourney.id)
+          .eq('user_id', member.user_id)
+
+        contribution_steps = memberProgress?.reduce((sum, p) => sum + (p.steps || 0), 0) || 0
+        contribution_distance_km =
+          memberProgress?.reduce((sum, p) => sum + (p.distance_km || 0), 0) || 0
+      }
+
+      return {
+        ...member,
+        profile,
+        contribution_steps,
+        contribution_distance_km,
+      }
+    })
+
+    // Get season participation
+    const { data: currentSeason } = await supabaseClient
+      .from('seasons')
+      .select('id')
+      .eq('is_current', true)
+      .single()
+
+    let seasonParticipation = null
+    if (currentSeason) {
+      const { data: seasonCrew } = await supabaseClient
+        .from('season_crews')
+        .select('*, crew:crews(*)')
+        .eq('season_id', currentSeason.id)
+        .eq('crew_id', crew_id)
+        .single()
+
+      if (seasonCrew) {
+        seasonParticipation = seasonCrew
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        crew,
+        members: membersWithContributions,
+        current_journey: currentJourneyWithProgress,
+        season_participation: seasonParticipation,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
