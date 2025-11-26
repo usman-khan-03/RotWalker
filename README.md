@@ -32,28 +32,33 @@ A cross-platform mobile app (iOS and Android) that gamifies step tracking with s
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd RotWalker
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Set up environment variables:
+
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` and add your Supabase credentials:
+
 ```
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 4. Start the development server:
+
 ```bash
 npm start
 ```
@@ -144,11 +149,34 @@ The app uses a centralized theme system (`src/theme/theme.ts`):
 
 ### Step Tracking
 
-Step tracking is implemented via hooks (`src/hooks/useSteps.ts`). Currently uses stubs - integrate with:
+Step tracking is fully implemented for both iOS and Android using `@uguratakan/react-native-step-counter`:
 
-- iOS: Core Motion (via expo-sensors or react-native-pedometer)
-- Android: Step Counter sensor (via expo-sensors)
-- Optional: Apple Health / Health Connect for backfilling
+- **iOS**: Uses Core Motion framework for step counting
+- **Android**: Uses Step Counter sensor API
+- **Permissions**:
+  - iOS: `NSMotionUsageDescription` in Info.plist (configured in app.json)
+  - Android: `ACTIVITY_RECOGNITION` permission (configured in app.json)
+- **Features**:
+  - Real-time step counting
+  - Daily step tracking with local storage
+  - Automatic sync to backend every minute
+  - Historical step data retrieval
+  - Background/foreground state handling
+  - Permission management
+
+The `useSteps` hook (`src/hooks/useSteps.ts`) provides:
+
+- `steps`: Current step count for today
+- `isTracking`: Whether tracking is active
+- `isAvailable`: Whether step counting is supported on device
+- `permissionStatus`: Current permission status
+- `startTracking()`: Start step tracking
+- `stopTracking()`: Stop step tracking
+- `syncToBackend()`: Manually sync steps to backend
+- `getHistoricalSteps()`: Get step data for multiple days
+- `requestPermissions()`: Request step tracking permissions
+
+Step tracking automatically starts when the user completes onboarding and has granted permissions.
 
 ### Journey Distance Validation
 
@@ -163,8 +191,8 @@ Crew journeys must be at least 50 miles (80 km). Validation is implemented in `s
 
 ## TODO / Next Steps
 
-- [ ] Implement actual step tracking (pedometer integration)
-- [ ] Implement Supabase Edge Functions
+- [x] Implement actual step tracking (pedometer integration) ✅
+- [x] Implement Supabase Edge Functions ✅
 - [ ] Add journey creation flow
 - [ ] Add crew creation flow
 - [ ] Implement friend request system

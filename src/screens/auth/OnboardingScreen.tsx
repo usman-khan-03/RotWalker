@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSteps } from '../../hooks/useSteps';
 import { updateProfile } from '../../api/database';
 import { theme } from '../../theme/theme';
 
@@ -12,26 +13,43 @@ type OnboardingStep = 'steps' | 'notifications' | 'journey';
 
 export function OnboardingScreen() {
   const { user, profile, refreshProfile } = useAuth();
+  const { requestPermissions, startTracking, isAvailable, error: stepsError } = useSteps();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('steps');
   const [loading, setLoading] = useState(false);
+  const [stepsPermissionGranted, setStepsPermissionGranted] = useState(false);
 
   const handleStepPermission = async (step: OnboardingStep) => {
-    // TODO: Request actual permissions
-    // For steps: Request pedometer/health permissions
-    // For notifications: Request notification permissions
-    
     if (step === 'steps') {
-      // TODO: Request pedometer permission
-      console.log('Requesting step tracking permissions...');
+      try {
+        // Request permissions
+        const granted = await requestPermissions();
+        
+        if (granted) {
+          // Start tracking
+          const started = await startTracking();
+          if (started) {
+            setStepsPermissionGranted(true);
+            setCurrentStep('notifications');
+          } else {
+            Alert.alert(
+              'Permission Required',
+              'Step tracking requires motion sensor permissions. Please enable it in Settings.',
+              [{ text: 'OK' }]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Permission Denied',
+            'Step tracking requires motion sensor permissions to work. You can enable it later in Settings.',
+            [{ text: 'OK', onPress: () => setCurrentStep('notifications') }]
+          );
+        }
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'Failed to request step tracking permissions');
+      }
     } else if (step === 'notifications') {
       // TODO: Request notification permission
-      console.log('Requesting notification permissions...');
-    }
-
-    // Move to next step
-    if (step === 'steps') {
-      setCurrentStep('notifications');
-    } else if (step === 'notifications') {
+      // For now, just move to next step
       setCurrentStep('journey');
     }
   };
@@ -56,12 +74,36 @@ export function OnboardingScreen() {
       <Text style={styles.stepDescription}>
         RotWalker needs access to your step data to track your journeys. We'll use your device's pedometer and optionally sync with Apple Health or Health Connect.
       </Text>
+      
+      {stepsError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{stepsError}</Text>
+        </View>
+      )}
+      
+      {isAvailable === false && (
+        <View style={styles.warningContainer}>
+          <Text style={styles.warningText}>
+            Step tracking is not available on this device.
+          </Text>
+        </View>
+      )}
+      
+      {stepsPermissionGranted && (
+        <View style={styles.successContainer}>
+          <Text style={styles.successText}>✓ Step tracking enabled</Text>
+        </View>
+      )}
+      
       <TouchableOpacity
-        style={styles.primaryButton}
+        style={[styles.primaryButton, stepsPermissionGranted && styles.primaryButtonDisabled]}
         onPress={() => handleStepPermission('steps')}
+        disabled={stepsPermissionGranted}
         activeOpacity={0.8}
       >
-        <Text style={styles.primaryButtonText}>Enable Step Tracking</Text>
+        <Text style={styles.primaryButtonText}>
+          {stepsPermissionGranted ? 'Step Tracking Enabled' : 'Enable Step Tracking'}
+        </Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.secondaryButton}
@@ -205,6 +247,42 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     textAlign: 'center',
     marginTop: theme.spacing.md,
+  },
+  errorContainer: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  errorText: {
+    ...theme.typography.bodySecondary,
+    color: theme.colors.error,
+    textAlign: 'center',
+  },
+  warningContainer: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  warningText: {
+    ...theme.typography.bodySecondary,
+    color: theme.colors.warning,
+    textAlign: 'center',
+  },
+  successContainer: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  successText: {
+    ...theme.typography.bodySecondary,
+    color: theme.colors.success,
+    textAlign: 'center',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
   },
 });
 

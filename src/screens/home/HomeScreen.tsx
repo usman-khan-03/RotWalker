@@ -2,10 +2,11 @@
  * Home Screen - Main dashboard
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useHomeSummary } from '../../hooks/useHomeSummary';
+import { useSteps } from '../../hooks/useSteps';
 import { StatCard } from '../../components/StatCard';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { HeroMap } from '../../components/HeroMap';
@@ -19,9 +20,19 @@ type ViewMode = 'solo' | 'crew' | 'season';
 export function HomeScreen() {
   const { profile } = useAuth();
   const { data: homeSummary, isLoading } = useHomeSummary();
+  const { steps, isTracking, startTracking, isAvailable, permissionStatus } = useSteps();
   const [viewMode, setViewMode] = useState<ViewMode>('solo');
 
   const firstName = profile?.display_name?.split(' ')[0] || 'there';
+
+  // Automatically start step tracking when screen loads (if permissions granted)
+  useEffect(() => {
+    if (profile?.is_onboarding_complete && !isTracking && isAvailable && permissionStatus === 'granted') {
+      startTracking().catch((err) => {
+        console.error('Failed to auto-start step tracking:', err);
+      });
+    }
+  }, [profile?.is_onboarding_complete, isTracking, isAvailable, permissionStatus, startTracking]);
 
   // Determine which journey to show on hero map
   const heroJourney = 
