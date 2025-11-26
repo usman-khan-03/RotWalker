@@ -73,115 +73,133 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	};
 
 	useEffect(() => {
-		// Get initial session
-		supabase.auth.getSession().then(({ data: { session } }) => {
-			setSession(session);
-			setUser(session?.user ?? null);
-			if (session?.user) {
-				fetchProfile(session.user.id).finally(() => setLoading(false));
-			} else {
-				setLoading(false);
-			}
-		});
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    });
 
-		// Listen for auth changes
-		const {
-			data: { subscription },
-		} = supabase.auth.onAuthStateChange(async (_event, session) => {
-			setSession(session);
-			setUser(session?.user ?? null);
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
 
-			if (session?.user) {
-				await fetchProfile(session.user.id);
-			} else {
-				setProfile(null);
-			}
+      if (session?.user) {
+        await fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+      }
 
-			setLoading(false);
-		});
+      setLoading(false);
+    });
 
-		// Handle deep links for OAuth callback
-		const handleDeepLink = async (url: string) => {
-			// Extract the URL fragments/query params
-			const { path, queryParams } = Linking.parse(url);
+    // Handle deep links for OAuth callback
+    const handleDeepLink = async (url: string) => {
+      // Extract the URL fragments/query params
+      const { path, queryParams } = Linking.parse(url);
 
-			if (path === "auth/callback" || queryParams?.access_token) {
-				// Handle the OAuth callback
-				const accessToken = queryParams?.access_token as string;
-				const refreshToken = queryParams?.refresh_token as string;
+      // Parse fragments from the URL (OAuth tokens come as fragments)
+      const fragmentMatch = url.match(/#(.+)/);
+      const fragment = fragmentMatch ? fragmentMatch[1] : "";
+      const fragmentParams = new URLSearchParams(fragment);
 
-				if (accessToken && refreshToken) {
-					const { data, error } = await supabase.auth.setSession({
-						access_token: accessToken,
-						refresh_token: refreshToken,
-					});
+      if (path === "auth/callback" || queryParams?.access_token || fragment) {
+        // Handle the OAuth callback
+        const accessToken =
+          (queryParams?.access_token as string) ||
+          fragmentParams.get("access_token");
+        const refreshToken =
+          (queryParams?.refresh_token as string) ||
+          fragmentParams.get("refresh_token");
 
-					if (error) {
-						console.error("Error setting session from deep link:", error);
-					}
-				}
-			}
-		};
+        // console.log("Parsed tokens from deep link:", {
+        //   accessToken: !!accessToken,
+        //   refreshToken: !!refreshToken,
+        // });
 
-		// Check if app was opened via deep link
-		Linking.getInitialURL().then((url) => {
-			if (url) {
-				handleDeepLink(url);
-			}
-		});
+        if (accessToken && refreshToken) {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
 
-		// Listen for deep links while app is running
-		const subscriptionLinking = Linking.addEventListener("url", (event) => {
-			handleDeepLink(event.url);
-		});
+          if (error) {
+            console.error("Error setting session from deep link:", error);
+          } else {
+            console.log("Session set successfully from deep link");
+          }
+        }
+      }
+    };
 
-		return () => {
-			subscription.unsubscribe();
-			subscriptionLinking.remove();
-		};
-	}, []);
+    // Check if app was opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        // console.log("Initial URL received:", url);
+        handleDeepLink(url);
+      }
+    });
 
-	const signInWithGoogle = async () => {
-		try {
-			// Get the redirect URL - use the app scheme
-			// const redirectUrl = Linking.createURL("auth/callback");
-			const redirectUrl = Linking.createURL("auth/callback", {
-				scheme: "rotwalker",
-			});
-			console.log("redirect url: ", redirectUrl);
+    // Listen for deep links while app is running
+    const subscriptionLinking = Linking.addEventListener("url", (event) => {
+    //   console.log("Deep link event received:", event.url);
+      handleDeepLink(event.url);
+    });
 
-			const { data, error } = await supabase.auth.signInWithOAuth({
-				provider: "google",
-				options: {
-					redirectTo: redirectUrl,
-					skipBrowserRedirect: false,
-				},
-			});
+    return () => {
+      subscription.unsubscribe();
+      subscriptionLinking.remove();
+    };
+  }, []);
 
-			if (error) {
-				console.error("Google OAuth error:", error);
-				throw error;
-			}
+  const signInWithGoogle = async () => {
+    try {
+      // Get the redirect URL - use the app scheme
+      // const redirectUrl = Linking.createURL("auth/callback");
+      const redirectUrl = Linking.createURL("auth/callback", {
+        scheme: "rotwalker",
+      });
+    //   console.log("redirect url: ", redirectUrl);
 
-			// Open the OAuth URL in the browser
-			if (data?.url) {
-				const result = await WebBrowser.openAuthSessionAsync(
-					data.url,
-					redirectUrl,
-				);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: false,
+        },
+      });
 
-				if (result.type === "cancel") {
-					throw new Error("Google sign-in was cancelled");
-				}
+      if (error) {
+        console.error("Google OAuth error:", error);
+        throw error;
+      }
 
-				// The session will be set via the deep link handler
-				// No need to manually extract tokens here
-			}
-		} catch (error: any) {
-			console.error("Error in signInWithGoogle:", error);
-			throw error;
-		}
-	};
+      // Open the OAuth URL in the browser
+      if (data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          redirectUrl
+        );
+
+        if (result.type === "cancel") {
+          throw new Error("Google sign-in was cancelled");
+        }
+
+        // The session will be set via the deep link handler
+        // No need to manually extract tokens here
+      }
+    } catch (error: any) {
+      console.error("Error in signInWithGoogle:", error);
+      throw error;
+    }
+  };
 
 	const signOut = async () => {
 		const { error } = await supabase.auth.signOut();

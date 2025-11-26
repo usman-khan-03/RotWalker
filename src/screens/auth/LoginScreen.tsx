@@ -31,7 +31,6 @@ export function LoginScreen() {
 		try {
 			setLoading(true);
 			await signInWithGoogle();
-			console.log("Sign in was successful?");
 			// Navigation will happen automatically via auth state change
 		} catch (error: any) {
 			Alert.alert(
@@ -40,6 +39,7 @@ export function LoginScreen() {
 			);
 			setLoading(false);
 		}
+		console.log("Sign in was successful?");
 	};
 
 	return (
