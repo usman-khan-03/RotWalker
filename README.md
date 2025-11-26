@@ -149,7 +149,7 @@ The app uses a centralized theme system (`src/theme/theme.ts`):
 
 ### Step Tracking
 
-Step tracking is fully implemented for both iOS and Android using `@uguratakan/react-native-step-counter`:
+Step tracking is fully implemented for both iOS and Android using `expo-sensors` Pedometer module:
 
 - **iOS**: Uses Core Motion framework for step counting
 - **Android**: Uses Step Counter sensor API

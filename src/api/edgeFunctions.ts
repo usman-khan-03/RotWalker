@@ -21,10 +21,22 @@ export async function syncStepsData(
 	source: "pedometer" | "apple_health" | "health_connect",
 	samples: StepSample[],
 ): Promise<void> {
-	const { error } = await supabase.functions.invoke("sync_steps_data", {
-		body: { user_id: userId, source, samples },
-	});
-	if (error) throw error;
+	try {
+		const { data, error } = await supabase.functions.invoke("sync_steps_data", {
+			body: { user_id: userId, source, samples },
+		});
+		
+		if (error) {
+			console.error('Edge function error:', error);
+			throw error;
+		}
+		
+		return data;
+	} catch (err: any) {
+		// Log error but don't crash the app
+		console.error('Error calling sync_steps_data edge function:', err);
+		throw err;
+	}
 }
 
 /**
