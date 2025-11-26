@@ -1,49 +1,47 @@
 {
-  "expo": {
-    "name": "RotWalker",
-    "slug": "rotwalker",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#050816"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.rotwalker.app",
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "RotWalker needs your location to show your journey on the map.",
-        "NSMotionUsageDescription": "RotWalker needs access to motion sensors to track your steps."
-      }
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#050816"
-      },
-      "package": "com.rotwalker.app",
-      "permissions": [
-        "android.permission.ACTIVITY_RECOGNITION",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow RotWalker to use your location."
-        }
-      ]
-    ]
-  }
+	"expo": {
+		"name": "RotWalker",
+		"slug": "rotwalker",
+		"scheme": "rotwalker",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "dark",
+		"splash": {
+			"image": "./assets/splash.png",
+			"resizeMode": "contain",
+			"backgroundColor": "#050816"
+		},
+		"assetBundlePatterns": ["**/*"],
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "com.rotwalker.app",
+			"infoPlist": {
+				"NSLocationWhenInUseUsageDescription": "RotWalker needs your location to show your journey on the map.",
+				"NSMotionUsageDescription": "RotWalker needs access to motion sensors to track your steps."
+			}
+		},
+		"android": {
+			"adaptiveIcon": {
+				"foregroundImage": "./assets/adaptive-icon.png",
+				"backgroundColor": "#050816"
+			},
+			"package": "com.rotwalker.app",
+			"permissions": [
+				"android.permission.ACTIVITY_RECOGNITION",
+				"android.permission.ACCESS_FINE_LOCATION"
+			]
+		},
+		"web": {
+			"favicon": "./assets/favicon.png"
+		},
+		"plugins": [
+			[
+				"expo-location",
+				{
+					"locationAlwaysAndWhenInUsePermission": "Allow RotWalker to use your location."
+				}
+			]
+		]
+	}
 }
-
