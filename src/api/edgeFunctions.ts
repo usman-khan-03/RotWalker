@@ -22,7 +22,7 @@ export async function syncStepsData(
 	samples: StepSample[],
 ): Promise<void> {
 	try {
-		const { data, error } = await supabase.functions.invoke("sync_steps_data", {
+		const { data, error } = await supabase.functions.invoke("sync-steps-data", {
 			body: { user_id: userId, source, samples },
 		});
 		
@@ -44,7 +44,7 @@ export async function syncStepsData(
  * Edge Function: get_home_summary
  */
 export async function getHomeSummary(userId: string): Promise<HomeSummary> {
-	const { data, error } = await supabase.functions.invoke("get_home_summary", {
+	const { data, error } = await supabase.functions.invoke("get-home-summary", {
 		body: { user_id: userId },
 	});
 	if (error) throw error;
@@ -60,7 +60,7 @@ export async function getFriendsLeaderboard(
 	period: LeaderboardPeriod,
 ): Promise<FriendsLeaderboardEntry[]> {
 	const { data, error } = await supabase.functions.invoke(
-		"get_friends_leaderboard",
+		"get-friends-leaderboard",
 		{
 			body: { user_id: userId, period },
 		},
@@ -74,7 +74,7 @@ export async function getFriendsLeaderboard(
  * Edge Function: get_crew_detail
  */
 export async function getCrewDetail(crewId: string): Promise<CrewDetail> {
-	const { data, error } = await supabase.functions.invoke("get_crew_detail", {
+	const { data, error } = await supabase.functions.invoke("get-crew-detail", {
 		body: { crew_id: crewId },
 	});
 	if (error) throw error;

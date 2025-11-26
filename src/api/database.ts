@@ -8,41 +8,98 @@ import type { Profile, Crew, Journey, CrewMember, Season, SeasonCrew } from '../
 
 // Profile queries
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  console.log("inside get profile with userId:", userId);
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
 
-  if (error) {
-    if (error.code === 'PGRST116') return null; // Not found
+    console.log("finished with supabase query for getProfile");
+    if (error) {
+      console.error('Error fetching profile:', error);
+      throw error;
+    }
+
+    if (!data) {
+      console.log('Profile not found for user:', userId);
+      return null;
+    }
+
+    console.log('Fetched profile:', data);
+    return data;
+  } catch (error: any) {
+    console.error('Exception in getProfile:', error.message);
     throw error;
   }
-
-  return data;
 }
 
 export async function createProfile(profile: Partial<Profile>): Promise<Profile> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .insert(profile)
-    .select()
-    .single();
+  try {
+    const queryPromise = supabase
+      .from('profiles')
+      .insert(profile)
+      .select()
+      .maybeSingle();
 
-  if (error) throw error;
-  return data;
+    // Wrap with timeout
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Insert query timeout after 5s')), 5000)
+    );
+
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+    if (error) {
+      console.error('Error creating profile:', error);
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('Failed to create profile');
+    }
+
+    console.log('Created new profile:', data);
+    return data;
+  } catch (error: any) {
+    console.error('Exception in createProfile:', error.message);
+    throw error;
+  }
 }
 
 export async function updateProfile(userId: string, updates: Partial<Profile>): Promise<Profile> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', userId)
-    .select()
-    .single();
+  console.log("Updating profile for user:", userId, "with updates:", updates);
+  
+  try {
+    // First, do the update without select to avoid hanging
+    const updateQuery = supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .throwOnError();
 
-  if (error) throw error;
-  return data;
+    // Wrap with timeout
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Update query timeout after 5s')), 5000)
+    );
+
+    await Promise.race([updateQuery, timeoutPromise]);
+
+    console.log("Update query completed, now fetching updated profile");
+    
+    // Now fetch the updated profile
+    const updatedProfile = await getProfile(userId);
+    
+    if (!updatedProfile) {
+      throw new Error('Failed to fetch updated profile');
+    }
+
+    console.log('Updated profile:', updatedProfile);
+    return updatedProfile;
+  } catch (error: any) {
+    console.error('Exception in updateProfile:', error.message);
+    throw error;
+  }
 }
 
 // Crew queries

@@ -35,3 +35,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// Remove the redundant session setter - Supabase handles this automatically
+// The auth client will automatically use the persisted session from AsyncStorage

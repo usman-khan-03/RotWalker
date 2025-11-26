@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSteps } from '../../hooks/useSteps';
 import { updateProfile } from '../../api/database';
 import { theme } from '../../theme/theme';
+import { supabase } from '@/api/supabase';
 
 type OnboardingStep = 'steps' | 'notifications' | 'journey';
 
@@ -54,19 +55,36 @@ export function OnboardingScreen() {
     }
   };
 
-  const handleCompleteOnboarding = async () => {
-    if (!user) return;
+const handleCompleteOnboarding = async () => {
+  console.log("does user exist user:", user?.id);
+  if (!user) return;
 
-    try {
-      setLoading(true);
-      await updateProfile(user.id, { is_onboarding_complete: true });
-      await refreshProfile();
-      // Navigation will happen automatically via auth state change
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to complete onboarding');
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    
+    // Update profile to mark onboarding complete
+    console.log("Completing onboarding for user:", user.id);
+    
+    // Use updateProfile from database.ts instead
+    const updatedProfile = await updateProfile(user.id, { 
+      is_onboarding_complete: true 
+    });
+    
+    console.log("reached after updating");
+    console.log('Onboarding completed successfully');
+    
+    // Refresh profile in auth context to update the is_onboarding_complete flag
+    // This will trigger RootNavigator to navigate to Main tabs
+    await refreshProfile();
+    
+    console.log('Profile refreshed after onboarding');
+    // Navigation will happen automatically via profile state change in RootNavigator
+  } catch (error: any) {
+    console.error('Error completing onboarding:', error);
+    Alert.alert('Error', error.message || 'Failed to complete onboarding');
+    setLoading(false);
+  }
+};
 
   const renderStepsStep = () => (
     <View style={styles.stepContent}>
