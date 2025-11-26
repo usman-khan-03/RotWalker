@@ -10,9 +10,14 @@ import React, {
 	ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { supabase } from "../api/supabase";
 import { getProfile, createProfile } from "../api/database";
 import type { Profile } from "../types";
+
+// Complete auth session for proper OAuth handling
+WebBrowser.maybeCompleteAuthSession();
 
 interface AuthContextType {
 	user: User | null;
@@ -95,21 +100,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			setLoading(false);
 		});
 
-		return () => subscription.unsubscribe();
+		// Handle deep links for OAuth callback
+		const handleDeepLink = async (url: string) => {
+			// Extract the URL fragments/query params
+			const { path, queryParams } = Linking.parse(url);
+			
+			if (path === 'auth/callback' || queryParams?.access_token) {
+				// Handle the OAuth callback
+				const accessToken = queryParams?.access_token as string;
+				const refreshToken = queryParams?.refresh_token as string;
+				
+				if (accessToken && refreshToken) {
+					const { data, error } = await supabase.auth.setSession({
+						access_token: accessToken,
+						refresh_token: refreshToken,
+					});
+					
+					if (error) {
+						console.error('Error setting session from deep link:', error);
+					}
+				}
+			}
+		};
+
+		// Check if app was opened via deep link
+		Linking.getInitialURL().then((url) => {
+			if (url) {
+				handleDeepLink(url);
+			}
+		});
+
+		// Listen for deep links while app is running
+		const subscriptionLinking = Linking.addEventListener('url', (event) => {
+			handleDeepLink(event.url);
+		});
+
+		return () => {
+			subscription.unsubscribe();
+			subscriptionLinking.remove();
+		};
 	}, []);
 
 	const signInWithGoogle = async () => {
-		// TODO: Implement Google Sign-In
-		// This is a stub - replace with actual Google OAuth flow
-		const { data, error } = await supabase.auth.signInWithOAuth({
-			provider: "google",
-			options: {
-				redirectTo: "rotwalker://auth/callback",
-			},
-		});
+		try {
+			// Get the redirect URL - use the app scheme
+			const redirectUrl = Linking.createURL('auth/callback');
+			
+			const { data, error } = await supabase.auth.signInWithOAuth({
+				provider: "google",
+				options: {
+					redirectTo: redirectUrl,
+					skipBrowserRedirect: false,
+				},
+			});
 
-		if (error) throw error;
-		// Session will be updated via onAuthStateChange
+			if (error) {
+				console.error("Google OAuth error:", error);
+				throw error;
+			}
+
+			// Open the OAuth URL in the browser
+			if (data?.url) {
+				const result = await WebBrowser.openAuthSessionAsync(
+					data.url,
+					redirectUrl
+				);
+
+				if (result.type === 'cancel') {
+					throw new Error('Google sign-in was cancelled');
+				}
+
+				// The session will be set via the deep link handler
+				// No need to manually extract tokens here
+			}
+		} catch (error: any) {
+			console.error("Error in signInWithGoogle:", error);
+			throw error;
+		}
 	};
 
 	const signOut = async () => {
