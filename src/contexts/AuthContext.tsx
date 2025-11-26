@@ -144,7 +144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const signInWithGoogle = async () => {
 		try {
 			// Get the redirect URL - use the app scheme
-			const redirectUrl = Linking.createURL("rotwalker://auth/callback");
+			// const redirectUrl = Linking.createURL("auth/callback");
+			const redirectUrl = Linking.createURL("auth/callback", {
+				scheme: "rotwalker",
+			});
+			console.log("redirect url: ", redirectUrl);
 
 			const { data, error } = await supabase.auth.signInWithOAuth({
 				provider: "google",
