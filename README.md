@@ -4,6 +4,11 @@ Turn your steps into epic journeys.
 
 A cross-platform mobile app (iOS and Android) that gamifies step tracking with solo journeys, group journeys, and weekly competitive seasons.
 
+## TODOS
+
+- Restrict google map api and add security layers
+- try to optimize app and make it smaller
+
 ## Features
 
 - **Solo Journeys**: Choose origin and destination cities, convert steps to distance on a map
