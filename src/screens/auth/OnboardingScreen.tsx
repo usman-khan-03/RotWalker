@@ -122,7 +122,6 @@ export function OnboardingScreen() {
 	};
 
 	const handleCompleteOnboarding = async () => {
-		console.log("does user exist user:", user?.id);
 		if (!user) return;
 
 		// Validate journey selection
@@ -132,9 +131,6 @@ export function OnboardingScreen() {
 
 		try {
 			setLoading(true);
-
-			// Create the journey first
-			console.log("Creating journey for user:", user.id);
 
 			const distance = calculateDistance(
 				originCity!.lat,
@@ -163,11 +159,6 @@ export function OnboardingScreen() {
 				status: "active",
 				is_primary: true, // First journey is always primary
 			});
-
-			console.log("Journey created:", journey.id);
-
-			// Update profile to mark onboarding complete
-			console.log("Completing onboarding for user:", user.id);
 
 			const updatedProfile = await updateProfile(user.id, {
 				is_onboarding_complete: true,
