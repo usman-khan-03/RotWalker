@@ -40,6 +40,10 @@
 				"expo-location",
 				{
 					"locationAlwaysAndWhenInUsePermission": "Allow RotWalker to use your location."
+				},
+				"expo-web-browser",
+				{
+					"useCustomTabs": false
 				}
 			]
 		]
