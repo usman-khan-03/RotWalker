@@ -155,9 +155,9 @@ export function HomeScreen() {
             </View>
           )}
           <Text style={styles.greetingText}>Hey, {firstName}</Text>
-          {homeSummary?.streak && homeSummary.streak > 0 && (
+          {(homeSummary?.streak ?? 0) > 0 && (
             <View style={styles.streakBadge}>
-              <Text style={styles.streakText}>🔥 {String(homeSummary.streak)}</Text>
+              <Text style={styles.streakText}>🔥 {String(homeSummary?.streak ?? 0)}</Text>
             </View>
           )}
         </View>
