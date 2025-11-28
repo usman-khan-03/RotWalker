@@ -95,20 +95,6 @@ export function CityPicker({
     onChange(null);
   };
 
-  const renderCityItem = ({ item }: { item: CityResult }) => (
-    <TouchableOpacity
-      style={styles.resultItem}
-      onPress={() => handleSelectCity(item)}
-      activeOpacity={0.7}
-    >
-      <Text style={styles.resultCity}>{item.city}</Text>
-      <Text style={styles.resultLocation}>
-        {item.state ? `${item.state}, ` : ''}
-        {item.country}
-      </Text>
-    </TouchableOpacity>
-  );
-
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
@@ -147,14 +133,20 @@ export function CityPicker({
       {error && <Text style={styles.errorText}>{error}</Text>}
       {showResults && results.length > 0 && (
         <View style={styles.resultsContainer}>
-          <FlatList
-            data={results}
-            renderItem={renderCityItem}
-            keyExtractor={(item, index) => `${item.lat}-${item.lon}-${index}`}
-            style={styles.resultsList}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          />
+          {results.map((item, index) => (
+            <TouchableOpacity
+              key={`${item.lat}-${item.lon}-${index}`}
+              style={styles.resultItem}
+              onPress={() => handleSelectCity(item)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.resultCity}>{item.city}</Text>
+              <Text style={styles.resultLocation}>
+                {item.state ? `${item.state}, ` : ''}
+                {item.country}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
       {showResults && !isSearching && results.length === 0 && searchQuery.trim().length >= 2 && (
@@ -222,11 +214,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.divider,
     maxHeight: 200,
     zIndex: 1000,
-    elevation: 5,
     ...theme.shadows.card,
-  },
-  resultsList: {
-    maxHeight: 200,
   },
   resultItem: {
     padding: theme.spacing.md,
